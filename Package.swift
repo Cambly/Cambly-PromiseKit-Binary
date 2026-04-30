@@ -12,8 +12,8 @@ let package = Package(
   targets: [
     .binaryTarget(
       name: "PromiseKit",
-      url: "https://github.com/Cambly/Cambly-PromiseKit-Binary/releases/download/0.0.0/PromiseKit.xcframework.zip",
-      checksum: "0000000000000000000000000000000000000000000000000000000000000000"
+      url: "https://github.com/Cambly/Cambly-PromiseKit-Binary/releases/download/6.22.1/PromiseKit.xcframework.zip",
+      checksum: "0688c821b598ea0b35e80f735a1aaa3f1b5618070e7006de068423ae3c191931"
     ),
   ]
 )
