@@ -1,0 +1,64 @@
+name: Build and Release xcframeworks
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Upstream PromiseKit version tag (e.g. 6.22.1)"
+        required: true
+        type: string
+
+permissions:
+  contents: write  # needs to push commits, create tags + releases
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - name: Checkout wrapper repo
+        uses: actions/checkout@v4
+
+      - name: Build all xcframeworks via Makefile
+        # CI uses HTTPS to clone upstream (no SSH key on the runner); local
+        # devs can use the Makefile's default SSH UPSTREAM_REPO.
+        run: make all VERSION=${{ inputs.version }} UPSTREAM_REPO=https://github.com/mxcl/PromiseKit.git
+
+      - name: Compute checksums
+        id: checksums
+        run: |
+          cd build/artifacts
+          {
+            for f in *.xcframework.zip; do
+              name="${f%.xcframework.zip}"
+              sha=$(swift package compute-checksum "$f")
+              echo "${name}_sha=${sha}"
+            done
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Patch Package.swift
+        env:
+          VERSION: ${{ inputs.version }}
+          PROMISEKIT_SHA: ${{ steps.checksums.outputs.PromiseKit_sha }}
+        run: |
+          python3 .github/scripts/patch_package_swift.py
+
+      # Order matters: commit Package.swift FIRST so that when `gh release create`
+      # auto-creates the tag, it points at the commit with the patched Package.swift.
+      # If we created the release before committing, the tag would point at the parent
+      # commit (with placeholder URL+sha), causing SwiftPM consumers to hit a 404.
+      - name: Commit Package.swift update + push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Package.swift
+          git commit -m "Update Package.swift to ${{ inputs.version }}"
+          git push origin HEAD:main
+
+      - name: Create GitHub release with assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ inputs.version }}" \
+            build/artifacts/*.xcframework.zip \
+            --title "${{ inputs.version }}" \
+            --notes "Prebuilt xcframeworks for upstream PromiseKit v${{ inputs.version }}. Built with BUILD_LIBRARY_FOR_DISTRIBUTION=YES from mxcl/PromiseKit @ tag ${{ inputs.version }}."
