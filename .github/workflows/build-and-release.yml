@@ -15,13 +15,28 @@ jobs:
   build:
     runs-on: macos-15
     steps:
+      # Validate the dispatch input before it is used anywhere. This both
+      # rejects bad tags early and is defense-in-depth against injection.
+      - name: Validate version input
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+(\.[0-9]+)?$'; then
+            echo "::error::Invalid version '$VERSION'; expected a tag like 6.22.1"
+            exit 1
+          fi
+
       - name: Checkout wrapper repo
         uses: actions/checkout@v4
 
       - name: Build all xcframeworks via Makefile
         # CI uses HTTPS to clone upstream (no SSH key on the runner); local
         # devs can use the Makefile's default SSH UPSTREAM_REPO.
-        run: make all VERSION=${{ inputs.version }} UPSTREAM_REPO=https://github.com/mxcl/PromiseKit.git
+        # NB: pass `inputs.version` via env + a quoted shell variable, never
+        # interpolated directly into the run script, to avoid command injection.
+        env:
+          VERSION: ${{ inputs.version }}
+        run: make all VERSION="$VERSION" UPSTREAM_REPO=https://github.com/mxcl/PromiseKit.git
 
       - name: Compute checksums
         id: checksums
@@ -47,18 +62,21 @@ jobs:
       # If we created the release before committing, the tag would point at the parent
       # commit (with placeholder URL+sha), causing SwiftPM consumers to hit a 404.
       - name: Commit Package.swift update + push
+        env:
+          VERSION: ${{ inputs.version }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add Package.swift
-          git commit -m "Update Package.swift to ${{ inputs.version }}"
+          git commit -m "Update Package.swift to $VERSION"
           git push origin HEAD:main
 
       - name: Create GitHub release with assets
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
         run: |
-          gh release create "${{ inputs.version }}" \
+          gh release create "$VERSION" \
             build/artifacts/*.xcframework.zip \
-            --title "${{ inputs.version }}" \
-            --notes "Prebuilt xcframeworks for upstream PromiseKit v${{ inputs.version }}. Built with BUILD_LIBRARY_FOR_DISTRIBUTION=YES from mxcl/PromiseKit @ tag ${{ inputs.version }}."
+            --title "$VERSION" \
+            --notes "Prebuilt xcframeworks for upstream PromiseKit v$VERSION. Built with BUILD_LIBRARY_FOR_DISTRIBUTION=YES from mxcl/PromiseKit @ tag $VERSION."
