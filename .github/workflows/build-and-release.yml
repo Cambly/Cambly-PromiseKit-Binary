@@ -21,7 +21,16 @@ jobs:
         env:
           VERSION: ${{ inputs.version }}
         run: |
-          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+(\.[0-9]+)?$'; then
+          # Reject anything that isn't a plain dotted numeric version. The
+          # character-class `case` also rejects newlines/whitespace/control
+          # chars, closing the per-line `grep` bypass. See H1 #3772396.
+          case "$VERSION" in
+            "" | *[!0-9.]* )
+              echo "::error::Invalid version '$VERSION'; expected a tag like 6.22.1"
+              exit 1 ;;
+          esac
+          re='^[0-9]+\.[0-9]+(\.[0-9]+)?$'
+          if [[ ! "$VERSION" =~ $re ]]; then
             echo "::error::Invalid version '$VERSION'; expected a tag like 6.22.1"
             exit 1
           fi
