@@ -22,14 +22,16 @@ clean:
 clone:
 	@test -n "$(VERSION)" || { echo "❌ VERSION is required, e.g. make all VERSION=6.22.1"; exit 1; }
 	mkdir -p $(BUILD_DIR)
-	test -d $(WORK_DIR) || git clone --depth 1 --branch $(VERSION) $(UPSTREAM_REPO) $(WORK_DIR)
+	# Quote VERSION: make expands it into the recipe as text, so an unquoted
+	# `--branch $(VERSION)` would let a crafted VERSION inject shell commands here.
+	test -d "$(WORK_DIR)" || git clone --depth 1 --branch "$(VERSION)" "$(UPSTREAM_REPO)" "$(WORK_DIR)"
 
 build-xcframeworks: clone
 	mkdir -p $(ARTIFACTS_DIR)
 	@for product in $(PRODUCTS); do \
 	  echo "🔨 Building $$product for iOS device + simulator..."; \
 	  xcodebuild archive \
-	    -project $(WORK_DIR)/PromiseKit.xcodeproj \
+	    -project "$(WORK_DIR)/PromiseKit.xcodeproj" \
 	    -scheme $$product \
 	    -destination "generic/platform=iOS" \
 	    -archivePath $(BUILD_DIR)/$$product-iOS-device.xcarchive \
@@ -37,7 +39,7 @@ build-xcframeworks: clone
 	    BUILD_LIBRARY_FOR_DISTRIBUTION=YES \
 	    -quiet || exit 1; \
 	  xcodebuild archive \
-	    -project $(WORK_DIR)/PromiseKit.xcodeproj \
+	    -project "$(WORK_DIR)/PromiseKit.xcodeproj" \
 	    -scheme $$product \
 	    -destination "generic/platform=iOS Simulator" \
 	    -archivePath $(BUILD_DIR)/$$product-iOS-sim.xcarchive \

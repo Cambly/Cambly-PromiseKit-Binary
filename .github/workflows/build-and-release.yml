@@ -14,6 +14,12 @@ permissions:
 jobs:
   build:
     runs-on: macos-15
+    # Pass the dispatch input through the environment rather than expanding
+    # ${{ inputs.version }} inline in a `run:` block. `${{ }}` is substituted
+    # into the script as text before the shell runs, so an inline use is a
+    # command-injection sink; an env var is passed as data and never reparsed.
+    env:
+      VERSION: ${{ inputs.version }}
     steps:
       - name: Checkout wrapper repo
         uses: actions/checkout@v4
@@ -21,7 +27,7 @@ jobs:
       - name: Build all xcframeworks via Makefile
         # CI uses HTTPS to clone upstream (no SSH key on the runner); local
         # devs can use the Makefile's default SSH UPSTREAM_REPO.
-        run: make all VERSION=${{ inputs.version }} UPSTREAM_REPO=https://github.com/mxcl/PromiseKit.git
+        run: make all VERSION="$VERSION" UPSTREAM_REPO=https://github.com/mxcl/PromiseKit.git
 
       - name: Compute checksums
         id: checksums
@@ -37,7 +43,6 @@ jobs:
 
       - name: Patch Package.swift
         env:
-          VERSION: ${{ inputs.version }}
           PROMISEKIT_SHA: ${{ steps.checksums.outputs.PromiseKit_sha }}
         run: |
           python3 .github/scripts/patch_package_swift.py
@@ -51,14 +56,14 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add Package.swift
-          git commit -m "Update Package.swift to ${{ inputs.version }}"
+          git commit -m "Update Package.swift to $VERSION"
           git push origin HEAD:main
 
       - name: Create GitHub release with assets
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${{ inputs.version }}" \
+          gh release create "$VERSION" \
             build/artifacts/*.xcframework.zip \
-            --title "${{ inputs.version }}" \
-            --notes "Prebuilt xcframeworks for upstream PromiseKit v${{ inputs.version }}. Built with BUILD_LIBRARY_FOR_DISTRIBUTION=YES from mxcl/PromiseKit @ tag ${{ inputs.version }}."
+            --title "$VERSION" \
+            --notes "Prebuilt xcframeworks for upstream PromiseKit v$VERSION. Built with BUILD_LIBRARY_FOR_DISTRIBUTION=YES from mxcl/PromiseKit @ tag $VERSION."
